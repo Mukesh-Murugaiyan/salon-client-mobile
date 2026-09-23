@@ -46,6 +46,7 @@ export interface AttendanceRecord {
   userId: string | { name: string; email: string };
   date: string;
   checkInTime: string;
+  checkOutTime?: string | null;
   latitude: number;
   longitude: number;
   distanceFromSalon?: number;
@@ -56,6 +57,7 @@ export interface AttendanceTodayResponse {
   success: boolean;
   attendance: AttendanceRecord | null;
   hasCheckedIn: boolean;
+  hasCheckedOut?: boolean;
   salonLocation?: SalonLocationConfig | null;
 }
 
@@ -65,4 +67,10 @@ export interface CheckInResponse {
   attendance: AttendanceRecord;
   distanceFromSalon?: number;
   allowedRadius?: number;
+}
+
+export interface CheckOutResponse {
+  success: boolean;
+  message: string;
+  attendance: AttendanceRecord;
 }

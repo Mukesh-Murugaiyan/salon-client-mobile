@@ -1,6 +1,6 @@
 import * as Location from 'expo-location';
 import apiClient from './apiClient';
-import { AttendanceTodayResponse, CheckInResponse, SalonLocationConfig } from '../types/dashboard';
+import { AttendanceTodayResponse, CheckInResponse, CheckOutResponse, SalonLocationConfig } from '../types/dashboard';
 import { ApiConfig } from '../config/ApiConfig';
 import { Validation } from '../utils/Validation';
 import { DistanceUtils } from '../utils/DistanceUtils';
@@ -36,23 +36,39 @@ export const AttendanceService = {
   },
 
   /**
+   * Checks whether foreground location permission is granted.
+   * If not granted, prompts the user with the system permission dialog.
+   */
+  async ensureLocationPermission(): Promise<Location.LocationPermissionResponse> {
+    const current = await Location.getForegroundPermissionsAsync();
+    if (current.status === Location.PermissionStatus.GRANTED) {
+      return current;
+    }
+    return await Location.requestForegroundPermissionsAsync();
+  },
+
+  /**
    * Acquires device GPS coordinates following all permissions and device checks.
    * Throws LocationServiceError with clear user-friendly messages.
    */
   async getCurrentCoordinates(): Promise<{ latitude: number; longitude: number }> {
+    // 1. Check and request location permission if not already granted
+    const permission = await this.ensureLocationPermission();
+    if (permission.status !== Location.PermissionStatus.GRANTED) {
+      const err = new LocationServiceError(
+        'Location permission was denied. Please grant location access to verify attendance check-in.',
+        'PERMISSION_DENIED'
+      );
+      (err as any).canAskAgain = permission.canAskAgain;
+      throw err;
+    }
+
+    // 2. Verify device location services are enabled
     const isServiceEnabled = await Location.hasServicesEnabledAsync();
     if (!isServiceEnabled) {
       throw new LocationServiceError(
         'Location services are disabled on your device. Please enable device location services in settings to check in.',
         'SERVICES_DISABLED'
-      );
-    }
-
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== Location.PermissionStatus.GRANTED) {
-      throw new LocationServiceError(
-        'Location permission was denied. Please grant location access to verify attendance check-in.',
-        'PERMISSION_DENIED'
       );
     }
 
@@ -110,6 +126,17 @@ export const AttendanceService = {
         latitude,
         longitude,
       }
+    );
+    return response.data;
+  },
+
+  /**
+   * Submits employee check-out for today's attendance.
+   */
+  async checkOut(): Promise<CheckOutResponse> {
+    const response = await apiClient.post<CheckOutResponse>(
+      ApiConfig.ENDPOINTS.ATTENDANCE.CHECK_OUT,
+      {}
     );
     return response.data;
   },

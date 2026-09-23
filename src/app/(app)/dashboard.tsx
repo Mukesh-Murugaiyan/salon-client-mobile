@@ -1,9 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Linking,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -38,12 +40,14 @@ export default function DashboardScreen() {
   const [subscription, setSubscription] = useState<SubscriptionStatusData | null>(null);
   const [attendance, setAttendance] = useState<AttendanceRecord | null>(null);
   const [hasCheckedIn, setHasCheckedIn] = useState<boolean>(false);
+  const [hasCheckedOut, setHasCheckedOut] = useState<boolean>(false);
   const [salonLocation, setSalonLocation] = useState<SalonLocationConfig | null>(null);
 
   const [dashboardError, setDashboardError] = useState<string | null>(null);
   const [isCheckingIn, setIsCheckingIn] = useState(false);
   const [checkInError, setCheckInError] = useState<string | null>(null);
-  const [checkInSuccess, setCheckInSuccess] = useState<string | null>(null);
+  const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const [checkOutError, setCheckOutError] = useState<string | null>(null);
   const [subscriptionExpiredError, setSubscriptionExpiredError] = useState<string | null>(null);
 
   const [outOfRangeDetails, setOutOfRangeDetails] = useState<{
@@ -106,6 +110,7 @@ export default function DashboardScreen() {
         const attendanceData = await AttendanceService.getTodayStatus();
         setAttendance(attendanceData.attendance);
         setHasCheckedIn(attendanceData.hasCheckedIn);
+        setHasCheckedOut(!!attendanceData.attendance?.checkOutTime);
         if (attendanceData.salonLocation) {
           setSalonLocation(attendanceData.salonLocation);
         } else if (summaryData?.salonLocation) {
@@ -127,7 +132,7 @@ export default function DashboardScreen() {
   const onRefresh = () => {
     setIsRefreshing(true);
     setCheckInError(null);
-    setCheckInSuccess(null);
+    setCheckOutError(null);
     setOutOfRangeDetails(null);
     fetchDashboardData();
   };
@@ -138,16 +143,40 @@ export default function DashboardScreen() {
     try {
       setIsCheckingIn(true);
       setCheckInError(null);
-      setCheckInSuccess(null);
+      setCheckOutError(null);
       setOutOfRangeDetails(null);
+
+      // Check and prompt for location permission if not granted
+      const permission = await AttendanceService.ensureLocationPermission();
+      if (permission.status !== 'granted') {
+        setIsCheckingIn(false);
+        setCheckInError('Location permission is required to verify attendance check-in.');
+        if (!permission.canAskAgain) {
+          Alert.alert(
+            'Location Permission Required',
+            'Location access is required to verify your attendance check-in. Please enable location permissions in your device settings.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Open Settings', onPress: () => Linking.openSettings() },
+            ]
+          );
+        } else {
+          Alert.alert(
+            'Location Permission Required',
+            'Location access is required to verify your attendance check-in. Please grant location access when prompted.',
+            [{ text: 'OK' }]
+          );
+        }
+        return;
+      }
 
       const coords = await AttendanceService.getCurrentCoordinates();
 
       const response = await AttendanceService.checkIn(coords.latitude, coords.longitude);
 
       setHasCheckedIn(true);
+      setHasCheckedOut(false);
       setAttendance(response.attendance);
-      setCheckInSuccess('Check-in successful!');
 
       const distanceDisplay = response.attendance?.distanceFromSalon !== undefined
         ? ` (${DistanceUtils.formatDistance(response.attendance.distanceFromSalon)} from salon)`
@@ -157,6 +186,25 @@ export default function DashboardScreen() {
     } catch (err: any) {
       if (err instanceof LocationServiceError) {
         setCheckInError(err.message);
+        if (err.code === 'SERVICES_DISABLED') {
+          Alert.alert(
+            'Location Services Disabled',
+            'Location services (GPS) are turned off on your device. Please turn on location services in device settings to check in.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Open Settings', onPress: () => Linking.openSettings() },
+            ]
+          );
+        } else if (err.code === 'PERMISSION_DENIED') {
+          Alert.alert(
+            'Location Permission Required',
+            'Location access is required to verify your attendance check-in. Please enable location permissions in your device settings.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Open Settings', onPress: () => Linking.openSettings() },
+            ]
+          );
+        }
       } else if (err?.errorCode === 'OUT_OF_RANGE' || err?.statusCode === 403) {
         const details = err?.details || err?.rawError?.details;
         if (details && details.distance !== undefined && details.allowedRadius !== undefined) {
@@ -190,6 +238,36 @@ export default function DashboardScreen() {
       }
     } finally {
       setIsCheckingIn(false);
+    }
+  };
+
+  const handleCheckOut = async () => {
+    if (!hasCheckedIn || hasCheckedOut) return;
+
+    try {
+      setIsCheckingOut(true);
+      setCheckOutError(null);
+      setCheckInError(null);
+
+      const response = await AttendanceService.checkOut();
+
+      setHasCheckedOut(true);
+      setAttendance(response.attendance);
+
+      const timeStr = DateTime.formatTime(response.attendance?.checkOutTime);
+      Alert.alert('Check-Out Successful', `You checked out today at ${timeStr}.`);
+    } catch (err: any) {
+      if (err?.errorCode === 'ALREADY_CHECKED_OUT') {
+        setHasCheckedOut(true);
+        setCheckOutError('You have already checked out for today.');
+      } else if (err?.errorCode === 'NOT_CHECKED_IN') {
+        setHasCheckedIn(false);
+        setCheckOutError('You must check in first before checking out.');
+      } else {
+        setCheckOutError(err?.message || 'Unable to complete check-out. Please try again.');
+      }
+    } finally {
+      setIsCheckingOut(false);
     }
   };
 
@@ -251,29 +329,32 @@ export default function DashboardScreen() {
   const salonClosingTime = DateTime.formatTime12h(rawClosing);
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
-      {/* Header Bar */}
-      <View style={styles.headerBar}>
-        <View style={styles.headerLeft}>
-          <Text style={styles.headerSalonName} numberOfLines={1}>
-            {salonDisplayName}
-          </Text>
-          <View style={styles.userMetaRow}>
-            <Text style={styles.userName}>{user?.name || user?.email}</Text>
-            <View style={styles.roleBadge}>
-              <Text style={styles.roleBadgeText}>{userRole}</Text>
+    <View style={styles.mainContainer}>
+      <StatusBar style="light" />
+      <SafeAreaView style={styles.headerSafeArea} edges={['top']}>
+        {/* Header Bar */}
+        <View style={styles.headerBar}>
+          <View style={styles.headerLeft}>
+            <Text style={styles.headerSalonName} numberOfLines={1}>
+              {salonDisplayName}
+            </Text>
+            <View style={styles.userMetaRow}>
+              <Text style={styles.userName}>{user?.name || user?.email}</Text>
+              <View style={styles.roleBadge}>
+                <Text style={styles.roleBadgeText}>{userRole}</Text>
+              </View>
             </View>
           </View>
-        </View>
 
-        <TouchableOpacity
-          style={styles.logoutButton}
-          onPress={handleLogout}
-          accessibilityLabel="Log out"
-        >
-          <Ionicons name="log-out-outline" size={22} color="#DC2626" />
-        </TouchableOpacity>
-      </View>
+          <TouchableOpacity
+            style={styles.logoutButton}
+            onPress={handleLogout}
+            accessibilityLabel="Log out"
+          >
+            <Ionicons name="log-out-outline" size={20} color="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
 
       <ScrollView
         contentContainerStyle={styles.scrollContent}
@@ -401,13 +482,31 @@ export default function DashboardScreen() {
                 <View
                   style={[
                     styles.iconCircle,
-                    { backgroundColor: hasCheckedIn ? '#DCFCE7' : '#FEF3C7' },
+                    {
+                      backgroundColor: hasCheckedOut
+                        ? '#E0F2FE'
+                        : hasCheckedIn
+                          ? '#DCFCE7'
+                          : '#FEF3C7',
+                    },
                   ]}
                 >
                   <Ionicons
-                    name={hasCheckedIn ? 'shield-checkmark' : 'location'}
+                    name={
+                      hasCheckedOut
+                        ? 'shield-checkmark'
+                        : hasCheckedIn
+                          ? 'checkmark-circle'
+                          : 'location'
+                    }
                     size={22}
-                    color={hasCheckedIn ? '#15803D' : '#D97706'}
+                    color={
+                      hasCheckedOut
+                        ? '#0284C7'
+                        : hasCheckedIn
+                          ? '#15803D'
+                          : '#D97706'
+                    }
                   />
                 </View>
                 <Text style={styles.cardHeading}>Attendance Check-In</Text>
@@ -416,16 +515,28 @@ export default function DashboardScreen() {
               <View
                 style={[
                   styles.statusBadge,
-                  { backgroundColor: hasCheckedIn ? '#DCFCE7' : '#FEF3C7' },
+                  {
+                    backgroundColor: hasCheckedOut
+                      ? '#E0F2FE'
+                      : hasCheckedIn
+                        ? '#DCFCE7'
+                        : '#FEF3C7',
+                  },
                 ]}
               >
                 <Text
                   style={[
                     styles.statusBadgeText,
-                    { color: hasCheckedIn ? '#15803D' : '#B45309' },
+                    {
+                      color: hasCheckedOut
+                        ? '#0284C7'
+                        : hasCheckedIn
+                          ? '#15803D'
+                          : '#B45309',
+                    },
                   ]}
                 >
-                  {hasCheckedIn ? 'Checked In' : 'Not Checked In'}
+                  {hasCheckedOut ? 'Checked Out' : hasCheckedIn ? 'Checked In' : 'Not Checked In'}
                 </Text>
               </View>
             </View>
@@ -449,25 +560,56 @@ export default function DashboardScreen() {
               </View>
             </View>
 
-            {/* Attendance Status Info */}
-            {hasCheckedIn && (
+            {/* Case 1: Checked In (shows "8:29PM - [Check-Out button at the end]") */}
+            {hasCheckedIn && !hasCheckedOut && (
               <View style={[styles.attendanceInfoBox, styles.infoBoxCheckedIn]}>
-                <View style={styles.checkedInDetails}>
-                  <Ionicons name="checkmark-circle" size={20} color="#15803D" />
-                  <View style={styles.statusTextGroup}>
-                    <Text style={styles.checkedInStatusTitle}>Attendance Status: Checked In</Text>
-                    <Text style={styles.checkedInText}>
-                      Checked in today at {DateTime.formatTime(attendance?.checkInTime)}
+                <View style={styles.attendanceInlineRow}>
+                  <View style={styles.attendanceTimeGroup}>
+                    <Ionicons name="time-outline" size={18} color="#15803D" />
+                    <Text style={styles.attendanceTimeText}>
+                      {DateTime.formatTime(attendance?.checkInTime)}
                     </Text>
-                    {attendance?.distanceFromSalon !== undefined && (
-                      <View style={styles.recordedDistanceBadge}>
-                        <Ionicons name="location-outline" size={14} color="#059669" />
-                        <Text style={styles.recordedDistanceText}>
-                          Verified distance: {DistanceUtils.formatDistance(attendance.distanceFromSalon)} from salon
-                        </Text>
-                      </View>
-                    )}
+                    <Text style={styles.attendanceTimeSeparator}>-</Text>
                   </View>
+                  {canCheckInAttendance && (
+                    <TouchableOpacity
+                      style={[
+                        styles.inlineCheckOutButton,
+                        isCheckingOut && styles.checkInButtonLoading,
+                      ]}
+                      onPress={handleCheckOut}
+                      disabled={isCheckingOut}
+                      accessibilityLabel="Check Out Button"
+                    >
+                      {isCheckingOut ? (
+                        <View style={styles.inlineButtonInner}>
+                          <ActivityIndicator color="#FFFFFF" size="small" />
+                          <Text style={styles.inlineCheckOutButtonText}>Checking Out...</Text>
+                        </View>
+                      ) : (
+                        <View style={styles.inlineButtonInner}>
+                          <Ionicons name="log-out-outline" size={15} color="#FFFFFF" />
+                          <Text style={styles.inlineCheckOutButtonText}>Check-Out</Text>
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+            )}
+
+            {/* Case 2: Checked Out (shows "8:29PM - 8:30PM") */}
+            {hasCheckedIn && hasCheckedOut && (
+              <View style={[styles.attendanceInfoBox, { backgroundColor: '#F0F9FF', borderWidth: 1, borderColor: '#BAE6FD' }]}>
+                <View style={styles.attendanceTimeGroup}>
+                  <Ionicons name="time-outline" size={18} color="#0284C7" />
+                  <Text style={styles.attendanceTimeText}>
+                    {DateTime.formatTime(attendance?.checkInTime)}
+                  </Text>
+                  <Text style={styles.attendanceTimeSeparator}>-</Text>
+                  <Text style={[styles.attendanceTimeText, { color: '#0284C7' }]}>
+                    {DateTime.formatTime(attendance?.checkOutTime)}
+                  </Text>
                 </View>
               </View>
             )}
@@ -505,35 +647,30 @@ export default function DashboardScreen() {
               </View>
             ) : null}
 
-            {/* Check-in Success Banner */}
-            {checkInSuccess && !checkInError ? (
-              <View style={styles.checkInSuccessBanner}>
-                <Ionicons name="checkmark-circle" size={18} color="#15803D" style={styles.checkInErrorIcon} />
-                <Text style={styles.checkInSuccessText}>{checkInSuccess}</Text>
+
+            {/* Generic Check-out Error Alert */}
+            {checkOutError ? (
+              <View style={styles.checkInErrorBanner}>
+                <Ionicons name="alert-circle" size={18} color="#DC2626" style={styles.checkInErrorIcon} />
+                <Text style={styles.checkInErrorText}>{checkOutError}</Text>
               </View>
             ) : null}
 
-            {/* Check-In Option / Button or View-Only Notice */}
-            {canCheckInAttendance ? (
+            {/* Check-In Action Button (only shown when not checked in yet) */}
+            {canCheckInAttendance && !hasCheckedIn && (
               <TouchableOpacity
                 style={[
                   styles.checkInButton,
-                  hasCheckedIn && styles.checkInButtonDisabled,
                   isCheckingIn && styles.checkInButtonLoading,
                 ]}
                 onPress={handleCheckIn}
-                disabled={hasCheckedIn || isCheckingIn}
-                accessibilityLabel={hasCheckedIn ? 'Checked In' : 'Check In Button'}
+                disabled={isCheckingIn}
+                accessibilityLabel="Check In Button"
               >
                 {isCheckingIn ? (
                   <View style={styles.buttonInnerRow}>
                     <ActivityIndicator color="#FFFFFF" size="small" />
                     <Text style={styles.checkInButtonText}>Verifying Location & Checking In...</Text>
-                  </View>
-                ) : hasCheckedIn ? (
-                  <View style={styles.buttonInnerRow}>
-                    <Ionicons name="checkmark-circle" size={18} color="#9CA3AF" />
-                    <Text style={styles.checkInButtonDisabledText}>Checked In</Text>
                   </View>
                 ) : (
                   <View style={styles.buttonInnerRow}>
@@ -542,7 +679,8 @@ export default function DashboardScreen() {
                   </View>
                 )}
               </TouchableOpacity>
-            ) : (
+            )}
+            {!canCheckInAttendance && (
               <View style={styles.viewOnlyAttendanceBox}>
                 <Ionicons name="information-circle-outline" size={18} color="#6B7280" />
                 <Text style={styles.viewOnlyAttendanceText}>
@@ -566,11 +704,18 @@ export default function DashboardScreen() {
           </View>
         )}
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  mainContainer: {
+    flex: 1,
+    backgroundColor: '#F3F4F6',
+  },
+  headerSafeArea: {
+    backgroundColor: '#0284C7',
+  },
   safeArea: {
     flex: 1,
     backgroundColor: '#F3F4F6',
@@ -590,11 +735,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#0284C7',
     paddingHorizontal: 20,
     paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
   },
   headerLeft: {
     flex: 1,
@@ -603,7 +746,7 @@ const styles = StyleSheet.create({
   headerSalonName: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#111827',
+    color: '#FFFFFF',
   },
   userMetaRow: {
     flexDirection: 'row',
@@ -613,24 +756,25 @@ const styles = StyleSheet.create({
   },
   userName: {
     fontSize: 13,
-    color: '#6B7280',
+    color: '#E0F2FE',
+    fontWeight: '500',
   },
   roleBadge: {
-    backgroundColor: '#E0F2FE',
-    paddingHorizontal: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    paddingHorizontal: 7,
     paddingVertical: 2,
     borderRadius: 4,
   },
   roleBadgeText: {
     fontSize: 10,
     fontWeight: '700',
-    color: '#0369A1',
+    color: '#FFFFFF',
     textTransform: 'uppercase',
   },
   logoutButton: {
     padding: 8,
     borderRadius: 8,
-    backgroundColor: '#FEF2F2',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
   },
   scrollContent: {
     padding: 16,
@@ -822,6 +966,46 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#B45309',
   },
+  attendanceInlineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  attendanceTimeGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  attendanceTimeText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#15803D',
+  },
+  attendanceTimeSeparator: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#64748B',
+    marginHorizontal: 2,
+  },
+  inlineCheckOutButton: {
+    backgroundColor: '#D97706',
+    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  inlineButtonInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  inlineCheckOutButtonText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
   checkedInDetails: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -875,6 +1059,14 @@ const styles = StyleSheet.create({
   },
   checkInButton: {
     backgroundColor: '#0284C7',
+    borderRadius: 10,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 12,
+  },
+  checkOutButton: {
+    backgroundColor: '#D97706',
     borderRadius: 10,
     paddingVertical: 14,
     alignItems: 'center',

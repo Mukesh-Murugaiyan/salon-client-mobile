@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { View, StyleSheet, Animated } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 
 export function ShimmerPlaceholder({
   width,
@@ -58,22 +59,45 @@ export function ShimmerPlaceholder({
 
 export default function DashboardSkeleton() {
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
-      {/* Header Bar Skeleton */}
-      <View style={styles.headerBar}>
-        <View style={styles.headerLeft}>
-          {/* Salon Name Skeleton */}
-          <ShimmerPlaceholder width={160} height={20} borderRadius={6} />
-          {/* User & Role Badge Skeleton */}
-          <View style={styles.userMetaRow}>
-            <ShimmerPlaceholder width={110} height={14} borderRadius={4} />
-            <ShimmerPlaceholder width={55} height={18} borderRadius={4} />
+    <View style={styles.mainContainer}>
+      <StatusBar style="light" />
+      <SafeAreaView style={styles.headerSafeArea} edges={['top']}>
+        {/* Header Bar Skeleton */}
+        <View style={styles.headerBar}>
+          <View style={styles.headerLeft}>
+            {/* Salon Name Skeleton */}
+            <ShimmerPlaceholder
+              width={160}
+              height={20}
+              borderRadius={6}
+              style={{ backgroundColor: 'rgba(255, 255, 255, 0.35)' }}
+            />
+            {/* User & Role Badge Skeleton */}
+            <View style={styles.userMetaRow}>
+              <ShimmerPlaceholder
+                width={110}
+                height={14}
+                borderRadius={4}
+                style={{ backgroundColor: 'rgba(255, 255, 255, 0.25)' }}
+              />
+              <ShimmerPlaceholder
+                width={55}
+                height={18}
+                borderRadius={4}
+                style={{ backgroundColor: 'rgba(255, 255, 255, 0.25)' }}
+              />
+            </View>
           </View>
-        </View>
 
-        {/* Logout Button Placeholder */}
-        <ShimmerPlaceholder width={38} height={38} borderRadius={8} />
-      </View>
+          {/* Logout Button Placeholder */}
+          <ShimmerPlaceholder
+            width={38}
+            height={38}
+            borderRadius={8}
+            style={{ backgroundColor: 'rgba(255, 255, 255, 0.25)' }}
+          />
+        </View>
+      </SafeAreaView>
 
       <View style={styles.scrollContent}>
         {/* Card 1: Today's Appointments Count Skeleton */}
@@ -153,11 +177,18 @@ export default function DashboardSkeleton() {
           />
         </View>
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  mainContainer: {
+    flex: 1,
+    backgroundColor: '#F3F4F6',
+  },
+  headerSafeArea: {
+    backgroundColor: '#0284C7',
+  },
   safeArea: {
     flex: 1,
     backgroundColor: '#F3F4F6',
@@ -169,11 +200,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#0284C7',
     paddingHorizontal: 20,
     paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
   },
   headerLeft: {
     flex: 1,

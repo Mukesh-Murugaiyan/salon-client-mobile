@@ -57,6 +57,7 @@ export class ApiConfig {
     },
     ATTENDANCE: {
       CHECK_IN: '/attendance/check-in',
+      CHECK_OUT: '/attendance/check-out',
       TODAY: '/attendance/today',
     },
     APPOINTMENTS: {

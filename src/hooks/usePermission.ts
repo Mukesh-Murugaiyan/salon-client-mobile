@@ -16,8 +16,7 @@ export const usePermission = () => {
     can: (moduleName: string, actionName: string) => can(permissions, moduleName, actionName),
     hasPermission: (permission: string) => hasPermission(permissions, permission),
 
-    // Granular permission flags for mobile features
-    canCheckInAttendance: can(permissions, 'attendance', 'check_in'),
+    canCheckInAttendance: can(permissions, 'attendance', 'check_in') || can(permissions, 'attendance', 'view'),
     canViewAttendance: can(permissions, 'attendance', 'check_in') || can(permissions, 'attendance', 'view'),
     canViewAppointments: can(permissions, 'appointments', 'view'),
     canViewSubscription: can(permissions, 'subscription', 'view'),
