@@ -45,14 +45,14 @@ export class AppConfig {
   static readonly TEST_ACCOUNTS = [
     {
       label: 'Owner A',
-      email: 'ownera@salon.com',
+      email: 'owner@ecity.com',
       password: 'Password01*',
       salonName: 'Salon A',
       role: 'OWNER',
     },
     {
       label: 'Receptionist A',
-      email: 'receptionista@salon.com',
+      email: 'receptionist@ecity.com',
       password: 'Password01*',
       salonName: 'Salon A',
       role: 'RECEPTIONIST',

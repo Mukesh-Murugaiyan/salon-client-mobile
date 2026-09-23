@@ -98,8 +98,8 @@ The check-in engine enforces strict boundary and proximity validations:
 
 | Role | Email | Password | Salon Assigned | Capabilities |
 | :--- | :--- | :--- | :--- | :--- |
-| **Owner** | `ownera@salon.com` | `Password01*` | Salon A | Full salon access, live subscription metrics, attendance check-in |
-| **Receptionist** | `receptionista@salon.com` | `Password01*` | Salon A | Front-desk view, daily attendance check-in, today's appointments |
+| **Owner** | `owner@ecity.com` | `Password01*` | Salon A | Full salon access, live subscription metrics, attendance check-in |
+| **Receptionist** | `receptionist@ecity.com` | `Password01*` | Salon A | Front-desk view, daily attendance check-in, today's appointments |
 | **Super Admin** | `superadmin@salon.com` | `Password01*` | System Global | Platform administrative overview |
 
 ---
