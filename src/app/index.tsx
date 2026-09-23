@@ -1,17 +1,13 @@
 import React from 'react';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { Redirect } from 'expo-router';
 import { useAuth } from '../context/AuthContext';
+import { SplashScreen } from '../components/SplashScreen';
 
 export default function IndexScreen() {
   const { isAuthenticated, isLoading } = useAuth();
 
   if (isLoading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#0284C7" />
-      </View>
-    );
+    return <SplashScreen message="Verifying session..." />;
   }
 
   if (isAuthenticated) {
@@ -20,12 +16,3 @@ export default function IndexScreen() {
 
   return <Redirect href="/(auth)/login" />;
 }
-
-const styles = StyleSheet.create({
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#F3F4F6',
-  },
-});
