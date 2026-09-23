@@ -141,9 +141,9 @@ The following credentials are configured in the backend database for testing:
 
 | Role | Email | Password | Salon Assigned | Notes |
 | :--- | :--- | :--- | :--- | :--- |
-| **Owner** | `ownera@salon.com` | `Password@123` | Salon A | Full salon access, subscription view, attendance |
-| **Receptionist** | `receptionista@salon.com` | `Password@123` | Salon A | Attendance check-in, today's appointments |
-| **Super Admin** | `superadmin@salon.com` | `Admin@123` | Global | Platform overview & administrative scope |
+| **Owner** | `ownera@salon.com` | `Password01*` | Salon A | Full salon access, subscription view, attendance |
+| **Receptionist** | `receptionista@salon.com` | `Password01*` | Salon A | Attendance check-in, today's appointments |
+| **Super Admin** | `superadmin@salon.com` | `Password01*` | Global | Platform overview & administrative scope |
 
 *(Tip: On the Login screen, tap any of the "Quick Fill Test Credentials" chips to automatically fill these credentials).*
 
