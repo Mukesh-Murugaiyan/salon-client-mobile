@@ -30,7 +30,6 @@ export const AttendanceService = {
    * Throws LocationServiceError with clear user-friendly messages.
    */
   async getCurrentCoordinates(): Promise<{ latitude: number; longitude: number }> {
-    // 1. Check if device location services are enabled
     const isServiceEnabled = await Location.hasServicesEnabledAsync();
     if (!isServiceEnabled) {
       throw new LocationServiceError(
@@ -39,7 +38,6 @@ export const AttendanceService = {
       );
     }
 
-    // 2. Request / check foreground permissions
     const { status } = await Location.requestForegroundPermissionsAsync();
     if (status !== Location.PermissionStatus.GRANTED) {
       throw new LocationServiceError(
@@ -48,7 +46,6 @@ export const AttendanceService = {
       );
     }
 
-    // 3. Obtain current high-accuracy device location
     try {
       const position = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.High,

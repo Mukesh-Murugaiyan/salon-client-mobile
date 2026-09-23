@@ -21,7 +21,7 @@ export default function AppLayout() {
         name="dashboard"
         options={{
           title: 'Salon Dashboard',
-          headerShown: false, // Custom header inside Dashboard
+          headerShown: false,
         }}
       />
       <Stack.Screen

@@ -29,8 +29,6 @@ export const AuthService = {
   async logout(): Promise<void> {
     try {
       await apiClient.post('/auth/logout');
-    } catch {
-      // Stateless - ignore failure
-    }
+    } catch {}
   },
 };

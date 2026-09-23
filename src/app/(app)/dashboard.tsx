@@ -30,7 +30,6 @@ export default function DashboardScreen() {
   const [attendance, setAttendance] = useState<AttendanceRecord | null>(null);
   const [hasCheckedIn, setHasCheckedIn] = useState<boolean>(false);
 
-  // Check-in and error states
   const [dashboardError, setDashboardError] = useState<string | null>(null);
   const [isCheckingIn, setIsCheckingIn] = useState(false);
   const [checkInError, setCheckInError] = useState<string | null>(null);
@@ -41,18 +40,15 @@ export default function DashboardScreen() {
     setDashboardError(null);
     setSubscriptionExpiredError(null);
     try {
-      // 1. Fetch dashboard summary & appointment count
       const summaryData = await DashboardService.getSummary();
       setSummary(summaryData);
 
-      // Check if backend flagged subscription expired
       if (summaryData.subscriptionStatus === 'EXPIRED') {
         setSubscriptionExpiredError(
           'Your salon subscription has expired. Please renew to access all features.'
         );
       }
 
-      // 2. Fetch subscription details (plan name, end date, days remaining)
       try {
         const subData = await DashboardService.getSubscriptionStatus();
         if (subData) {
@@ -71,7 +67,6 @@ export default function DashboardScreen() {
         }
       }
 
-      // 3. Fetch today's attendance status
       try {
         const attendanceData = await AttendanceService.getTodayStatus();
         setAttendance(attendanceData.attendance);
@@ -114,26 +109,20 @@ export default function DashboardScreen() {
       setCheckInError(null);
       setCheckInSuccess(null);
 
-      // 1. Get GPS coordinates with strict permission & device checking
       const coords = await AttendanceService.getCurrentCoordinates();
 
-      // 2. Send latitude and longitude to backend.
-      // Backend performs server-side Haversine distance calculation and geo-fence validation.
       const response = await AttendanceService.checkIn(coords.latitude, coords.longitude);
 
       setHasCheckedIn(true);
       setAttendance(response.attendance);
       setCheckInSuccess('Check-in successful!');
 
-      // Format time for alert
       const timeStr = DateTime.formatTime(response.attendance?.checkInTime);
       Alert.alert('Check-In Successful', `You checked in today at ${timeStr}.`);
     } catch (err: any) {
       if (err instanceof LocationServiceError) {
-        // Location permission denied, services disabled, or unavailable
         setCheckInError(err.message);
       } else if (err?.errorCode === 'OUT_OF_RANGE' || err?.statusCode === 403) {
-        // Geo-fencing error from backend
         setCheckInError('You are outside the allowed salon location.');
       } else if (err?.errorCode === 'DUPLICATE_CHECK_IN') {
         setHasCheckedIn(true);
@@ -162,12 +151,10 @@ export default function DashboardScreen() {
     ]);
   };
 
-  // 1. Shimmer Skeleton Loading State
   if (isLoading) {
     return <DashboardSkeleton />;
   }
 
-  // 2. Fatal API Error State
   if (dashboardError && !summary) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top']}>

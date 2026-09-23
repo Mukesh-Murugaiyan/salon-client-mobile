@@ -8,7 +8,6 @@ export interface ApiErrorResponse {
   details?: Record<string, unknown>;
 }
 
-// Callback registered by AuthContext to log out on 401
 let onUnauthorizedCallback: (() => void) | null = null;
 
 export function setUnauthorizedCallback(callback: () => void): void {
@@ -23,7 +22,6 @@ const apiClient: AxiosInstance = axios.create({
   },
 });
 
-// Request Interceptor: Attach Base URL and Bearer Token
 apiClient.interceptors.request.use(
   async (config: InternalAxiosRequestConfig) => {
     config.baseURL = ApiConfig.getBaseUrl();
@@ -38,7 +36,6 @@ apiClient.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Response Interceptor: Centralized error handling and mapping
 apiClient.interceptors.response.use(
   (response) => response,
   async (error: AxiosError<ApiErrorResponse>) => {
@@ -46,18 +43,15 @@ apiClient.interceptors.response.use(
     const responseData = error.response?.data;
 
     if (status === 401) {
-      // 401 Unauthorized: Clear invalid session and redirect to login
       await StorageService.clearSession();
       if (onUnauthorizedCallback) {
         onUnauthorizedCallback();
       }
     }
 
-    // Normalized user-friendly error message resolution
     let friendlyMessage = 'Something went wrong. Please try again.';
 
     if (!error.response) {
-      // Network or connection failure
       friendlyMessage = 'Unable to connect to salon server. Please check your network or server URL.';
     } else if (responseData?.message) {
       friendlyMessage = responseData.message;
@@ -75,7 +69,6 @@ apiClient.interceptors.response.use(
       friendlyMessage = 'Something went wrong on the server. Please try again.';
     }
 
-    // Attach parsed message to error object for consumption in UI components
     const customError = new Error(friendlyMessage) as Error & {
       statusCode?: number;
       errorCode?: string;

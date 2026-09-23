@@ -8,7 +8,6 @@ const TOKEN_KEY = AppConfig.STORAGE_KEYS.AUTH_TOKEN;
 const USER_KEY = AppConfig.STORAGE_KEYS.AUTH_USER;
 const API_URL_KEY = AppConfig.STORAGE_KEYS.CUSTOM_API_URL;
 
-// In-memory fallback for environments where SecureStore is unavailable
 const memoryFallback: Record<string, string> = {};
 
 async function setItem(key: string, value: string): Promise<void> {
@@ -18,9 +17,7 @@ async function setItem(key: string, value: string): Promise<void> {
         window.localStorage.setItem(key, value);
         return;
       }
-    } catch {
-      // Fallback to memory
-    }
+    } catch { }
     memoryFallback[key] = value;
     return;
   }
@@ -39,9 +36,7 @@ async function getItem(key: string): Promise<string | null> {
       if (typeof window !== 'undefined' && window.localStorage) {
         return window.localStorage.getItem(key);
       }
-    } catch {
-      // Fallback to memory
-    }
+    } catch { }
     return memoryFallback[key] || null;
   }
 
@@ -60,9 +55,7 @@ async function deleteItem(key: string): Promise<void> {
         window.localStorage.removeItem(key);
         return;
       }
-    } catch {
-      // Fallback
-    }
+    } catch { }
     delete memoryFallback[key];
     return;
   }

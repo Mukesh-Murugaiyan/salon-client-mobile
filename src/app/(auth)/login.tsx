@@ -30,7 +30,6 @@ export default function LoginScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Quick URL config modal/toggle
   const [apiUrl, setApiUrlState] = useState(ApiConfig.getBaseUrl());
   const [showUrlConfig, setShowUrlConfig] = useState(false);
 

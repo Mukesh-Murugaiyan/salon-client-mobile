@@ -25,7 +25,6 @@ export const DashboardService = {
       );
       return response.data.subscription;
     } catch (error: any) {
-      // If 403 Forbidden (e.g. receptionist without subscription:view), return null gracefully
       if (error?.statusCode === 403) {
         return null;
       }

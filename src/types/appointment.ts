@@ -25,9 +25,9 @@ export interface Appointment {
   id: string;
   _id?: string;
   salonId: string;
-  date: string; // YYYY-MM-DD
-  startTime: string; // HH:mm
-  endTime: string; // HH:mm
+  date: string;
+  startTime: string;
+  endTime: string;
   status: AppointmentStatus;
   notes?: string;
   client: ClientSummary | null;

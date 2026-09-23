@@ -24,9 +24,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const handleLogout = async () => {
     try {
       await AuthService.logout();
-    } catch {
-      // Ignore
-    } finally {
+    } catch {} finally {
       await StorageService.clearSession();
       setUser(null);
       setToken(null);
@@ -34,13 +32,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   useEffect(() => {
-    // Register global unauthorized handler to auto-logout on 401
     setUnauthorizedCallback(() => {
       setUser(null);
       setToken(null);
     });
 
-    // Check for saved session on app startup
     const initializeAuth = async () => {
       try {
         const savedApiUrl = await StorageService.getCustomApiUrl();
@@ -57,7 +53,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setUser(savedUser);
           }
 
-          // Verify token validity against backend /auth/me
           try {
             const verifiedUser = await AuthService.getMe();
             setUser(verifiedUser);

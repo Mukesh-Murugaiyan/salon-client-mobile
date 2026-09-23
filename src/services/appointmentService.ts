@@ -13,7 +13,6 @@ export const AppointmentService = {
     const todayLocal = DateTime.getTodayLocalDateString();
     const todayUTC = DateTime.getTodayUtcDateString();
 
-    // Query both local and UTC date strings to match backend's dashboard aggregation
     const dateParam = todayLocal === todayUTC ? todayLocal : `${todayLocal},${todayUTC}`;
 
     const response = await apiClient.get<AppointmentsResponse>(
