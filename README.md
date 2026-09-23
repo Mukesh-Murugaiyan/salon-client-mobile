@@ -1,184 +1,152 @@
-# Salon CRM — Mobile Application (React Native / Expo)
+# Salon CRM Mobile Client — React Native & Expo Architecture
 
-Cross-platform mobile client for the **Salon CRM / ERP Platform**, built with **React Native** and **Expo (SDK 57)**. This application provides salon owners, receptionists, and staff with attendance tracking via GPS geo-fencing, dashboard metrics, and a read-only view of today's appointment schedule.
-
----
-
-## 1. Features & Scope
-
-1. **Authentication (Login & Logout)**:
-   - Dynamic role-based login (`SUPER_ADMIN`, `OWNER`, `RECEPTIONIST`).
-   - Secure token and session persistence via **Expo SecureStore**.
-   - Server-authoritative session resolution (`GET /api/auth/me`).
-   - Quick-fill preset buttons for fast assessment testing.
-2. **Salon Dashboard**:
-   - **Today's Appointment Count**: Live count from `GET /api/dashboard/summary`.
-   - **Subscription Status Card**: Live status badge (`ACTIVE` / `EXPIRED`), plan name, expiration date, and days remaining from backend (`GET /api/subscription/status`).
-   - **Attendance Status Card**: Today's status ("Not Checked In" or "Checked in at HH:MM AM/PM") from `GET /api/attendance/today`.
-   - **GPS Check-In Action**: Triggers device GPS acquisition and backend Haversine geo-fencing verification.
-3. **Attendance Check-In (GPS & Geo-Fencing)**:
-   - Obtains high-accuracy device coordinates via `expo-location`.
-   - Submits `{ latitude, longitude }` to `POST /api/attendance/check-in`.
-   - The backend performs server-side Haversine distance calculations and validates against the salon's configured allowed radius.
-   - Comprehensive handling for permission denied, location services disabled, and 403 `OUT_OF_RANGE`.
-4. **Today's Appointments (Read-Only)**:
-   - Scoped strictly to today's date and the authenticated salon tenant (`GET /api/appointments?date=YYYY-MM-DD`).
-   - Displays client name & contact, service name & price, assigned stylist, start/end time, notes, and appointment status (`CONFIRMED`, `PENDING`, `COMPLETED`, `CANCELLED`).
-   - Includes pull-to-refresh, empty states, and network error handling.
-5. **Security & Tenant Isolation**:
-   - Zero client-side tenant selection. Tenant ID is bound strictly to the authenticated user's JWT.
-   - Graceful 403 `SUBSCRIPTION_EXPIRED` alerting without application crashes.
-   - Centralized Axios interceptor automatically redirects to Login upon 401 Unauthorized.
+A cross-platform mobile application built with **React Native, TypeScript, and Expo (SDK 57)** for the multi-tenant Salon ERP / CRM platform. Designed for salon owners, receptionists, and staff, this app delivers **stateless secure authentication**, **live dashboard metrics**, **server-authoritative GPS geo-fencing check-in**, and a **read-only schedule of today's appointments**.
 
 ---
 
-## 2. Architecture & File Structure
+## 1. System Architecture & Mobile Workflow
 
 ```text
-salon-client-mobile/
-├── app.json                     # Expo configuration & location config plugins
-├── .env.example                 # Template for EXPO_PUBLIC_API_URL
-├── .env                         # Environment variables
-├── src/
-│   ├── app/                     # Expo Router navigation
-│   │   ├── _layout.tsx          # Root layout with AuthProvider & Stack
-│   │   ├── index.tsx            # Auth state guard / router
-│   │   ├── (auth)/
-│   │   │   └── login.tsx        # Login screen with credentials presets
-│   │   └── (app)/
-│   │       ├── _layout.tsx      # Authenticated Stack navigation
-│   │       ├── dashboard.tsx    # Dashboard with attendance & subscription
-│   │       └── appointments.tsx # Today's appointments (Read-Only)
-│   ├── config/
-│   │   └── api.ts               # Platform-aware API base URL resolution
-│   ├── context/
-│   │   └── AuthContext.tsx      # Session state & SecureStore integration
-│   ├── services/
-│   │   ├── apiClient.ts         # Axios client with Auth & error interceptors
-│   │   ├── authService.ts       # Login, profile, and logout API calls
-│   │   ├── dashboardService.ts  # Summary and subscription APIs
-│   │   ├── attendanceService.ts # Location checks and GPS check-in API
-│   │   ├── appointmentService.ts# Today's appointments query API
-│   │   └── storage.ts           # Expo SecureStore wrapper
-│   └── types/                   # TypeScript interfaces (Auth, Dashboard, Appointments)
+                               ┌────────────────────────────────────────────────────────┐
+                               │                    MOBILE APPLICATION                  │
+                               │                (React Native / Expo SDK 57)            │
+                               └───────────────────────────┬────────────────────────────┘
+                                                           │
+                                ┌──────────────────────────┴──────────────────────────┐
+                                ▼                                                     ▼
+                  ┌───────────────────────────┐                         ┌───────────────────────────┐
+                  │    Authentication Flow    │                         │   Expo Router Navigation  │
+                  │  - Login with Quick Fill  │                         │  - (auth)/login           │
+                  │  - SecureStore Session    │                         │  - (app)/dashboard        │
+                  │  - Session Restoration    │                         │  - (app)/appointments     │
+                  └─────────────┬─────────────┘                         └─────────────┬─────────────┘
+                                │                                                     │
+                                └──────────────────────────┬──────────────────────────┘
+                                                           │
+                                ┌──────────────────────────┴──────────────────────────┐
+                                ▼                                                     ▼
+                  ┌───────────────────────────┐                         ┌───────────────────────────┐
+                  │   Geo-Fencing Subsystem   │                         │  Operational Subsystems   │
+                  │ - `expo-location` GPS     │                         │ - Live Dashboard Summary  │
+                  │ - Haversine Distance Calc │                         │ - Live Subscription Card  │
+                  │ - Contextual Units (m/km) │                         │ - Today's Appts (Read-Only│
+                  │ - ExceededBy Calculation  │                         │ - Currency in INR (₹)     │
+                  └─────────────┬─────────────┘                         └─────────────┬─────────────┘
+                                │                                                     │
+                                └──────────────────────────┬──────────────────────────┘
+                                                           │ HTTPS Requests (Bearer JWT)
+                                                           ▼
+┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                       BACKEND SERVER API (`salon_server`)                                   │
+├─────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ • POST /api/v1/auth/login        • GET /api/v1/auth/me            • GET /api/v1/dashboard/summary           │
+│ • GET  /api/v1/subscription      • GET /api/v1/attendance/today   • POST /api/v1/attendance/check-in        │
+│ • GET  /api/v1/appointments?date=YYYY-MM-DD (Strictly scoped to authenticated tenant)                       │
+└─────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 3. Prerequisites & Setup
+## 2. Architectural Deep Dive: How the Mobile Client Works with Backend & Web
+
+### 1. Stateless Authentication & Secure Persistence
+- **Secure Token Storage**: The application persists JWT authentication tokens and cached user profiles using **Expo SecureStore** (hardware-backed Keychain on iOS and KeyStore on Android).
+- **Session Auto-Restoration**: On app launch, `AuthContext` retrieves the stored token and validates it against `GET /api/v1/auth/me`. If valid, the user immediately enters the authenticated stack; if invalid or expired, the storage is wiped and the user is redirected to Login.
+- **Centralized Axios Interceptor**: Automatically attaches `Authorization: Bearer <token>` to all requests and intercepts `401 Unauthorized` responses to clear sessions cleanly without crashing.
+
+### 2. Live Dashboard & Operational Status
+- **Today's Appointment Counter**: Fetches live booking count from `GET /api/v1/dashboard/summary`.
+- **Subscription Status Card**:
+  - Dynamically displays the salon's current subscription tier, active badge (`ACTIVE` / `EXPIRED`), end date, and remaining days.
+  - Sourced directly from `GET /api/v1/subscription` or dashboard summary.
+  - If the subscription expires, the card alerts the user with an `EXPIRED` badge and instructions to renew via the Web portal.
+- **Daily Attendance Card**:
+  - Sourced from `GET /api/v1/attendance/today`.
+  - Displays today's state: either `"Not Checked In"` or `"Checked In at HH:MM AM/PM"`.
+
+### 3. Server-Authoritative GPS Geo-Fencing & Attendance Check-In
+The check-in engine enforces strict boundary and proximity validations:
+1. **Device Permission Verification**:
+   - Requests foreground location permissions using `expo-location`.
+   - If denied, displays: *"Location permission is required to check in."*
+   - If device location services are toggled off, displays: *"Location services are disabled on your device."*
+2. **Coordinate Acquisition**:
+   - Acquires current GPS coordinates with high accuracy (`Location.Accuracy.High`).
+3. **Backend Haversine Verification**:
+   - Sends `{ latitude, longitude }` to `POST /api/v1/attendance/check-in`.
+   - The backend computes the spherical distance between device coordinates and the salon's configured coordinates.
+4. **Contextual Distance Formatting & Boundary Feedback**:
+   - **Inside Allowed Radius**: Returns HTTP 200. Check-in succeeds, recording timestamp and exact distance. The button transitions to `[ Checked In ]` and disables to prevent duplicate submissions.
+   - **Outside Allowed Radius**: Returns HTTP 403 `OUT_OF_RANGE`. The mobile app displays:
+     - Distance from salon (formatted contextually: `< 1,000m` in meters, `≥ 1,000m` in kilometers).
+     - Configured allowed boundary radius.
+     - Exact distance by which the user exceeds the boundary (`exceededBy`).
+5. **Duplicate Check-In Protection**:
+   - If an employee has already checked in today, the server returns `400 DUPLICATE_CHECK_IN`, and the mobile UI displays their recorded check-in timestamp.
+
+### 4. Today's Appointments (Read-Only)
+- **Strict Tenant & Date Isolation**: Queries `GET /api/v1/appointments?date=YYYY-MM-DD`. The server scopes the query exclusively to the authenticated user's `companyId` and today's calendar date.
+- **Read-Only Invariant**: In strict accordance with the architecture, appointments cannot be created or modified on mobile. Front-desk staff and stylists have a clear, distraction-free view of their daily appointments.
+- **Card Presentation**: Displays client name and contact, service name and duration, assigned stylist, start/end time, price in Indian Rupees (**₹**), and appointment status (`CONFIRMED`, `PENDING`, `COMPLETED`, `CANCELLED`).
+- **Resilience**: Includes pull-to-refresh, empty states, and offline/network error banners.
+
+---
+
+## 3. Evaluator Test Credentials (Pre-Configured)
+
+> **NOTE**: Dynamic test accounts are pre-configured in the database. Use the **Quick Fill Test Credentials** chips on the Login screen to fill any role with a single tap:
+
+| Role | Email | Password | Salon Assigned | Capabilities |
+| :--- | :--- | :--- | :--- | :--- |
+| **Owner** | `ownera@salon.com` | `Password01*` | Salon A | Full salon access, live subscription metrics, attendance check-in |
+| **Receptionist** | `receptionista@salon.com` | `Password01*` | Salon A | Front-desk view, daily attendance check-in, today's appointments |
+| **Super Admin** | `superadmin@salon.com` | `Password01*` | System Global | Platform administrative overview |
+
+---
+
+## 4. Setup & Running the Mobile Application
 
 ### Prerequisites
-- **Node.js** (v18+)
-- **npm** or **bun**
-- **Expo CLI** (`npx expo`)
-- **Backend Service** running on port `5001` (`salon_server`)
+- Node.js (v18+)
+- Backend service running on port `5001` (`salon_server`)
+- Expo CLI (`npx expo`)
 
-### Installation
+### Installation & Execution
 ```bash
-cd salon-client-mobile
+# Install dependencies
 npm install
-```
 
----
-
-## 4. API Base URL Configuration
-
-The mobile app includes intelligent platform-aware API routing:
-- **Android Emulator**: Defaults to `http://10.0.2.2:5001/api`
-- **iOS Simulator / Web**: Defaults to `http://localhost:5001/api`
-- **Physical Device (Expo Go)**: Connects to your computer's local IP address (e.g., `http://192.168.1.15:5001/api`)
-
-### Setting Environment Variables
-Create or edit `.env`:
-```env
-EXPO_PUBLIC_API_URL=http://localhost:5001/api
-```
-
-*(Note: You can also adjust the backend URL directly from the Login screen by tapping the server indicator at the bottom).*
-
----
-
-## 5. Running the Application
-
-### Start Development Server
-```bash
+# Start Expo development server
 npx expo start
 ```
 
-### Run on Platforms:
-- **Android Emulator**: Press `a` in the terminal or run `npm run android`
-- **iOS Simulator**: Press `i` in the terminal or run `npm run ios`
-- **Web Browser**: Press `w` in the terminal or run `npm run web`
-- **Physical Device**: Scan the QR code using the **Expo Go** app (Android) or Camera app (iOS)
+### Platform Options:
+- **Web Browser**: Press `w` in terminal to launch in browser.
+- **Android Emulator**: Press `a` in terminal or run `npm run android`.
+- **iOS Simulator**: Press `i` in terminal or run `npm run ios`.
+- **Physical Device**: Scan the QR code using the **Expo Go** app (Android) or Camera app (iOS).
+
+### Platform-Aware Backend URL Configuration
+The mobile app resolves the backend base URL automatically:
+- **iOS Simulator / Web**: Defaults to `http://localhost:5001/api/v1`
+- **Android Emulator**: Defaults to `http://10.0.2.2:5001/api/v1`
+- **Physical Device (Expo Go)**: Tap the server connection indicator at the bottom of the Login screen to set your machine's LAN IP (e.g. `http://192.168.1.15:5001/api/v1`).
 
 ---
 
-## 6. Required Location Permissions
+## 5. Automated Test Suite (30 Tests)
 
-The app requires foreground location permission to retrieve GPS coordinates for attendance check-in.
-
-### Permissions configured in `app.json`:
-```json
-[
-  "expo-location",
-  {
-    "locationAlwaysAndWhenInUsePermission": "Allow Salon CRM to access your location to verify attendance check-in."
-  }
-]
+Run the automated test suite using the Node.js test runner:
+```bash
+npm test
 ```
 
-### Handled edge cases:
-- **Permission Granted**: Coordinates retrieved and check-in API called.
-- **Permission Denied**: Displays *"Location permission is required to check in."* (API is **not** called).
-- **Location Services Disabled**: Displays *"Location services are disabled on your device. Please enable device location services to check in."*
-- **Unable to Locate**: Displays *"Unable to get your current location. Please try again."* (No dummy coordinates are sent).
-
----
-
-## 7. Test Credentials
-
-The following credentials are configured in the backend database for testing:
-
-| Role | Email | Password | Salon Assigned | Notes |
-| :--- | :--- | :--- | :--- | :--- |
-| **Owner** | `ownera@salon.com` | `Password01*` | Salon A | Full salon access, subscription view, attendance |
-| **Receptionist** | `receptionista@salon.com` | `Password01*` | Salon A | Attendance check-in, today's appointments |
-| **Super Admin** | `superadmin@salon.com` | `Password01*` | Global | Platform overview & administrative scope |
-
-*(Tip: On the Login screen, tap any of the "Quick Fill Test Credentials" chips to automatically fill these credentials).*
-
----
-
-## 8. Verified Test Cases
-
-- [x] **Login**:
-  - Valid Owner login navigates to Dashboard.
-  - Valid Receptionist login navigates to Dashboard.
-  - Invalid credentials displays backend validation error.
-  - Token persists across restarts via Expo SecureStore.
-  - Logout clears token and redirects to Login.
-- [x] **Dashboard**:
-  - Today's appointment count loads from `GET /api/dashboard/summary`.
-  - Subscription status loads (`ACTIVE` / `EXPIRED`), along with plan name and days remaining.
-  - Attendance status loads ("Not Checked In" or "Checked In at HH:MM").
-  - Pull-to-refresh updates all dashboard metrics.
-- [x] **Attendance Check-In**:
-  - Validates location services and requests permission.
-  - Successfully checks in when inside allowed radius (`12.971598, 77.594562`).
-  - Button disables and shows `[ Checked In ]` after successful check-in.
-  - Returns `OUT_OF_RANGE` 403 when outside allowed radius with friendly message: *"You are outside the allowed salon location."*
-  - Rejects duplicate check-ins (`DUPLICATE_CHECK_IN`).
-- [x] **Today's Appointments**:
-  - Displays list of appointments with client, service, stylist, time, and status.
-  - Read-only display without edit or create controls.
-  - Proper empty and error states.
-- [x] **Tenant Isolation**:
-  - Salon A users only see Salon A appointments.
-  - Client never provides `salonId` in request bodies.
-
----
-
-## 9. Known Limitations & Assumptions
-
-1. **Expo Go Geolocation on Emulators**: Android emulators or iOS simulators require setting mock location points in emulator settings to simulate being inside or outside the salon radius.
-2. **Read-Only Scope**: In strict accordance with assessment requirements, appointments cannot be created or edited from the mobile app. All CRM scheduling and subscription management is handled via the web application.
+### Verified Test Suites:
+1. `test/distance.test.ts` (13 tests):
+   - **Contextual Distance Formatting**: Formats `< 1,000m` in meters; `≥ 1,000m` in kilometers; supports imperial units (feet/miles); safely handles null/NaN.
+   - **Haversine Formula**: Verifies identical coordinates yield 0m; verifies nearby point (~39m) and distant point (~5km); parses numeric string inputs; handles invalid inputs gracefully.
+   - **Geofence Boundary & Exceeded Evaluation**: Accurately classifies points inside radius; center (0m); points slightly outside radius with exact exceeded amount; points far outside radius in kilometers.
+2. `test/utils.test.ts` (17 tests):
+   - **Currency Formatting**: Standardizes amounts in Indian Rupees (**₹**).
+   - **Validation Utility**: Validates email formats, passwords, phone numbers, and coordinate ranges (-90..90, -180..180).
+   - **String & Time Utilities**: 24h to 12h time conversion, duration calculations, date formatting, name initials, sensitive text masking.
