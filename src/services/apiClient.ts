@@ -72,10 +72,12 @@ apiClient.interceptors.response.use(
     const customError = new Error(friendlyMessage) as Error & {
       statusCode?: number;
       errorCode?: string;
+      details?: Record<string, any>;
       rawError?: ApiErrorResponse;
     };
     customError.statusCode = status;
     customError.errorCode = responseData?.error;
+    customError.details = responseData?.details;
     customError.rawError = responseData;
 
     return Promise.reject(customError);

@@ -1,3 +1,10 @@
+export interface SalonLocationConfig {
+  latitude: number | null;
+  longitude: number | null;
+  allowedRadius: number;
+  salonName?: string;
+}
+
 export interface DashboardSummary {
   todayAppointments: number;
   confirmedAppointments?: number;
@@ -8,6 +15,7 @@ export interface DashboardSummary {
   salonName: string;
   openingTime?: string;
   closingTime?: string;
+  salonLocation?: SalonLocationConfig | null;
 }
 
 export interface PlanDetails {
@@ -48,10 +56,13 @@ export interface AttendanceTodayResponse {
   success: boolean;
   attendance: AttendanceRecord | null;
   hasCheckedIn: boolean;
+  salonLocation?: SalonLocationConfig | null;
 }
 
 export interface CheckInResponse {
   success: boolean;
   message: string;
   attendance: AttendanceRecord;
+  distanceFromSalon?: number;
+  allowedRadius?: number;
 }

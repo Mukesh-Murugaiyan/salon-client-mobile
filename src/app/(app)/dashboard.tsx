@@ -16,8 +16,9 @@ import DashboardSkeleton from '../../components/DashboardSkeleton';
 import { useAuth } from '../../context/AuthContext';
 import { AttendanceService, LocationServiceError } from '../../services/attendanceService';
 import { DashboardService } from '../../services/dashboardService';
-import { AttendanceRecord, DashboardSummary, SubscriptionStatusData } from '../../types/dashboard';
+import { AttendanceRecord, DashboardSummary, SalonLocationConfig, SubscriptionStatusData } from '../../types/dashboard';
 import { DateTime } from '../../utils/DateTime';
+import { DistanceUtils } from '../../utils/DistanceUtils';
 import { AppConfig } from '../../config/AppConfig';
 
 export default function DashboardScreen() {
@@ -29,12 +30,22 @@ export default function DashboardScreen() {
   const [subscription, setSubscription] = useState<SubscriptionStatusData | null>(null);
   const [attendance, setAttendance] = useState<AttendanceRecord | null>(null);
   const [hasCheckedIn, setHasCheckedIn] = useState<boolean>(false);
+  const [salonLocation, setSalonLocation] = useState<SalonLocationConfig | null>(null);
 
   const [dashboardError, setDashboardError] = useState<string | null>(null);
   const [isCheckingIn, setIsCheckingIn] = useState(false);
   const [checkInError, setCheckInError] = useState<string | null>(null);
   const [checkInSuccess, setCheckInSuccess] = useState<string | null>(null);
   const [subscriptionExpiredError, setSubscriptionExpiredError] = useState<string | null>(null);
+
+  const [outOfRangeDetails, setOutOfRangeDetails] = useState<{
+    distance: number;
+    allowedRadius: number;
+    exceededBy: number;
+    formattedDistance: string;
+    formattedAllowedRadius: string;
+    formattedExceededBy: string;
+  } | null>(null);
 
   const fetchDashboardData = useCallback(async () => {
     setDashboardError(null);
@@ -71,6 +82,11 @@ export default function DashboardScreen() {
         const attendanceData = await AttendanceService.getTodayStatus();
         setAttendance(attendanceData.attendance);
         setHasCheckedIn(attendanceData.hasCheckedIn);
+        if (attendanceData.salonLocation) {
+          setSalonLocation(attendanceData.salonLocation);
+        } else if (summaryData?.salonLocation) {
+          setSalonLocation(summaryData.salonLocation);
+        }
       } catch (attErr: any) {
         console.warn('[Dashboard] Attendance fetch failed:', attErr.message);
       }
@@ -98,6 +114,7 @@ export default function DashboardScreen() {
     setIsRefreshing(true);
     setCheckInError(null);
     setCheckInSuccess(null);
+    setOutOfRangeDetails(null);
     fetchDashboardData();
   };
 
@@ -108,6 +125,7 @@ export default function DashboardScreen() {
       setIsCheckingIn(true);
       setCheckInError(null);
       setCheckInSuccess(null);
+      setOutOfRangeDetails(null);
 
       const coords = await AttendanceService.getCurrentCoordinates();
 
@@ -117,13 +135,37 @@ export default function DashboardScreen() {
       setAttendance(response.attendance);
       setCheckInSuccess('Check-in successful!');
 
+      const distanceDisplay = response.attendance?.distanceFromSalon !== undefined
+        ? ` (${DistanceUtils.formatDistance(response.attendance.distanceFromSalon)} from salon)`
+        : '';
       const timeStr = DateTime.formatTime(response.attendance?.checkInTime);
-      Alert.alert('Check-In Successful', `You checked in today at ${timeStr}.`);
+      Alert.alert('Check-In Successful', `You checked in today at ${timeStr}${distanceDisplay}.`);
     } catch (err: any) {
       if (err instanceof LocationServiceError) {
         setCheckInError(err.message);
       } else if (err?.errorCode === 'OUT_OF_RANGE' || err?.statusCode === 403) {
-        setCheckInError('You are outside the allowed salon location.');
+        const details = err?.details || err?.rawError?.details;
+        if (details && details.distance !== undefined && details.allowedRadius !== undefined) {
+          const dist = Number(details.distance);
+          const rad = Number(details.allowedRadius);
+          const exc = details.exceededBy !== undefined ? Number(details.exceededBy) : Math.max(0, dist - rad);
+          const formattedDist = DistanceUtils.formatDistance(dist);
+          const formattedRad = DistanceUtils.formatDistance(rad);
+          const formattedExc = DistanceUtils.formatDistance(exc);
+          setOutOfRangeDetails({
+            distance: dist,
+            allowedRadius: rad,
+            exceededBy: exc,
+            formattedDistance: formattedDist,
+            formattedAllowedRadius: formattedRad,
+            formattedExceededBy: formattedExc,
+          });
+          setCheckInError(
+            `You are outside the permitted salon radius for check-in.\n• Distance from salon: ${formattedDist}\n• Allowed radius: ${formattedRad}\n• Exceeds boundary by: ${formattedExc}`
+          );
+        } else {
+          setCheckInError('You are outside the permitted salon radius for check-in.');
+        }
       } else if (err?.errorCode === 'DUPLICATE_CHECK_IN') {
         setHasCheckedIn(true);
         setCheckInError('You have already checked in for today.');
@@ -387,22 +429,56 @@ export default function DashboardScreen() {
               </View>
             </View>
           </View>
-
           {/* Attendance Status Info */}
-          {hasCheckedIn && <View style={[styles.attendanceInfoBox, hasCheckedIn ? styles.infoBoxCheckedIn : styles.infoBoxNotChecked]}>
-            <View style={styles.checkedInDetails}>
-              <Ionicons name="checkmark-circle" size={20} color="#15803D" />
-              <View style={styles.statusTextGroup}>
-                <Text style={styles.checkedInStatusTitle}>Attendance Status: Checked In</Text>
-                <Text style={styles.checkedInText}>
-                  Checked in today at {DateTime.formatTime(attendance?.checkInTime)}
-                </Text>
+          {hasCheckedIn && (
+            <View style={[styles.attendanceInfoBox, styles.infoBoxCheckedIn]}>
+              <View style={styles.checkedInDetails}>
+                <Ionicons name="checkmark-circle" size={20} color="#15803D" />
+                <View style={styles.statusTextGroup}>
+                  <Text style={styles.checkedInStatusTitle}>Attendance Status: Checked In</Text>
+                  <Text style={styles.checkedInText}>
+                    Checked in today at {DateTime.formatTime(attendance?.checkInTime)}
+                  </Text>
+                  {attendance?.distanceFromSalon !== undefined && (
+                    <View style={styles.recordedDistanceBadge}>
+                      <Ionicons name="location-outline" size={14} color="#059669" />
+                      <Text style={styles.recordedDistanceText}>
+                        Verified distance: {DistanceUtils.formatDistance(attendance.distanceFromSalon)} from salon
+                      </Text>
+                    </View>
+                  )}
+                </View>
               </View>
             </View>
-          </View>}
+          )}
 
-          {/* Check-in Error Alert */}
-          {checkInError ? (
+          {/* Out of Range Detailed Error Breakdown */}
+          {outOfRangeDetails && (
+            <View style={styles.outOfRangeCard}>
+              <View style={styles.outOfRangeHeader}>
+                <Ionicons name="warning" size={18} color="#DC2626" />
+                <Text style={styles.outOfRangeTitle}>Outside Permitted Salon Radius</Text>
+              </View>
+              <View style={styles.outOfRangeRow}>
+                <Text style={styles.outOfRangeLabel}>Distance to Salon:</Text>
+                <Text style={styles.outOfRangeValue}>{outOfRangeDetails.formattedDistance}</Text>
+              </View>
+              <View style={styles.outOfRangeRow}>
+                <Text style={styles.outOfRangeLabel}>Permitted Radius:</Text>
+                <Text style={styles.outOfRangeValue}>{outOfRangeDetails.formattedAllowedRadius}</Text>
+              </View>
+              <View style={styles.outOfRangeRow}>
+                <Text style={styles.outOfRangeLabel}>Exceeds Boundary By:</Text>
+                <Text style={styles.outOfRangeExceededValue}>+{outOfRangeDetails.formattedExceededBy}</Text>
+              </View>
+              <Text style={{ fontSize: 11, color: '#6B7280', marginTop: 6, fontStyle: 'italic' }}>
+                Please move closer to the salon location to complete your attendance check-in.
+              </Text>
+            </View>
+          )}
+
+          {/* Generic Check-in Error Alert */}
+          {checkInError && !outOfRangeDetails ? (
             <View style={styles.checkInErrorBanner}>
               <Ionicons name="alert-circle" size={18} color="#DC2626" style={styles.checkInErrorIcon} />
               <Text style={styles.checkInErrorText}>{checkInError}</Text>
@@ -813,6 +889,72 @@ const styles = StyleSheet.create({
   retryButtonText: {
     color: '#FFFFFF',
     fontSize: 15,
+    fontWeight: '600',
+  },
+  geofenceConfigBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F0F9FF',
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 10,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+  },
+  geofenceConfigText: {
+    fontSize: 12,
+    color: '#0369A1',
+    fontWeight: '500',
+    flex: 1,
+  },
+  outOfRangeCard: {
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderRadius: 10,
+    padding: 12,
+    marginTop: 10,
+  },
+  outOfRangeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 8,
+  },
+  outOfRangeTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#991B1B',
+  },
+  outOfRangeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 3,
+  },
+  outOfRangeLabel: {
+    fontSize: 12,
+    color: '#4B5563',
+  },
+  outOfRangeValue: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#1F2937',
+  },
+  outOfRangeExceededValue: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#DC2626',
+  },
+  recordedDistanceBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 4,
+  },
+  recordedDistanceText: {
+    fontSize: 12,
+    color: '#059669',
     fontWeight: '600',
   },
 });

@@ -1,22 +1,32 @@
 import * as Location from 'expo-location';
 import apiClient from './apiClient';
-import { AttendanceTodayResponse, CheckInResponse } from '../types/dashboard';
+import { AttendanceTodayResponse, CheckInResponse, SalonLocationConfig } from '../types/dashboard';
 import { ApiConfig } from '../config/ApiConfig';
 import { Validation } from '../utils/Validation';
+import { DistanceUtils } from '../utils/DistanceUtils';
 
 export class LocationServiceError extends Error {
-  code: 'PERMISSION_DENIED' | 'SERVICES_DISABLED' | 'UNABLE_TO_LOCATE';
+  code: 'PERMISSION_DENIED' | 'SERVICES_DISABLED' | 'UNABLE_TO_LOCATE' | 'INVALID_COORDINATES';
 
-  constructor(message: string, code: 'PERMISSION_DENIED' | 'SERVICES_DISABLED' | 'UNABLE_TO_LOCATE') {
+  constructor(
+    message: string,
+    code: 'PERMISSION_DENIED' | 'SERVICES_DISABLED' | 'UNABLE_TO_LOCATE' | 'INVALID_COORDINATES'
+  ) {
     super(message);
     this.name = 'LocationServiceError';
     this.code = code;
   }
 }
 
+export interface GeofenceDetails {
+  distance: number;
+  allowedRadius: number;
+  exceededBy: number;
+}
+
 export const AttendanceService = {
   /**
-   * Fetches today's check-in status for the authenticated user.
+   * Fetches today's check-in status and salon location configuration for the authenticated user.
    */
   async getTodayStatus(): Promise<AttendanceTodayResponse> {
     const response = await apiClient.get<AttendanceTodayResponse>(
@@ -33,7 +43,7 @@ export const AttendanceService = {
     const isServiceEnabled = await Location.hasServicesEnabledAsync();
     if (!isServiceEnabled) {
       throw new LocationServiceError(
-        'Location services are disabled on your device. Please enable device location services to check in.',
+        'Location services are disabled on your device. Please enable device location services in settings to check in.',
         'SERVICES_DISABLED'
       );
     }
@@ -41,7 +51,7 @@ export const AttendanceService = {
     const { status } = await Location.requestForegroundPermissionsAsync();
     if (status !== Location.PermissionStatus.GRANTED) {
       throw new LocationServiceError(
-        'Location permission is required to check in.',
+        'Location permission was denied. Please grant location access to verify attendance check-in.',
         'PERMISSION_DENIED'
       );
     }
@@ -61,19 +71,37 @@ export const AttendanceService = {
       };
     } catch {
       throw new LocationServiceError(
-        'Unable to get your current location. Please try again.',
+        'Unable to acquire current GPS location. Please ensure you have a clear GPS signal and try again.',
         'UNABLE_TO_LOCATE'
       );
     }
   },
 
   /**
+   * Calculates live distance between current device GPS location and the salon.
+   */
+  async getLiveDistanceToSalon(salonLocation: SalonLocationConfig) {
+    if (!salonLocation.latitude || !salonLocation.longitude) {
+      throw new Error('Salon location coordinates are not configured.');
+    }
+
+    const userCoords = await this.getCurrentCoordinates();
+    return DistanceUtils.getGeofenceStatus(
+      userCoords.latitude,
+      userCoords.longitude,
+      salonLocation.latitude,
+      salonLocation.longitude,
+      salonLocation.allowedRadius
+    );
+  },
+
+  /**
    * Submits employee check-in with device GPS coordinates.
-   * The backend performs server-side Haversine geo-fencing calculation.
+   * The backend strictly performs server-side Haversine geo-fencing calculation and authorization.
    */
   async checkIn(latitude: number, longitude: number): Promise<CheckInResponse> {
     if (!Validation.isValidCoordinates(latitude, longitude)) {
-      throw new LocationServiceError('Invalid GPS coordinates acquired.', 'UNABLE_TO_LOCATE');
+      throw new LocationServiceError('Invalid GPS coordinates acquired.', 'INVALID_COORDINATES');
     }
 
     const response = await apiClient.post<CheckInResponse>(
