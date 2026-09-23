@@ -16,14 +16,24 @@ import AppointmentsSkeleton from '../../components/AppointmentsSkeleton';
 import { DateTime } from '../../utils/DateTime';
 import { NumberUtils } from '../../utils/NumberUtils';
 import { StringUtils } from '../../utils/StringUtils';
+import { useRouter } from 'expo-router';
+import { usePermission } from '../../hooks/usePermission';
 
 export default function AppointmentsScreen() {
+  const router = useRouter();
+  const { canViewAppointments } = usePermission();
+
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const fetchAppointments = useCallback(async () => {
+    if (!canViewAppointments) {
+      setIsLoading(false);
+      return;
+    }
+
     try {
       setErrorMessage(null);
       const data = await AppointmentService.getTodayAppointments();
@@ -36,7 +46,7 @@ export default function AppointmentsScreen() {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, []);
+  }, [canViewAppointments]);
 
   useEffect(() => {
     fetchAppointments();
@@ -154,6 +164,26 @@ export default function AppointmentsScreen() {
 
   if (isLoading) {
     return <AppointmentsSkeleton />;
+  }
+
+  if (!canViewAppointments) {
+    return (
+      <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+        <View style={styles.centerContainer}>
+          <Ionicons name="lock-closed-outline" size={54} color="#DC2626" />
+          <Text style={styles.errorTitle}>Access Restricted</Text>
+          <Text style={styles.errorSubtitle}>
+            Your assigned role does not have permission to view salon appointments (`appointments:view` required).
+          </Text>
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={() => router.back()}
+          >
+            <Text style={styles.retryButtonText}>Return to Dashboard</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
   }
 
   return (

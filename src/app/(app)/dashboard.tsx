@@ -20,9 +20,17 @@ import { AttendanceRecord, DashboardSummary, SalonLocationConfig, SubscriptionSt
 import { DateTime } from '../../utils/DateTime';
 import { DistanceUtils } from '../../utils/DistanceUtils';
 import { AppConfig } from '../../config/AppConfig';
+import { usePermission } from '../../hooks/usePermission';
 
 export default function DashboardScreen() {
   const { user, logout } = useAuth();
+  const {
+    canCheckInAttendance,
+    canViewAttendance,
+    canViewAppointments,
+    canViewSubscription,
+    canViewDashboard,
+  } = usePermission();
 
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -50,16 +58,30 @@ export default function DashboardScreen() {
   const fetchDashboardData = useCallback(async () => {
     setDashboardError(null);
     setSubscriptionExpiredError(null);
-    try {
-      const summaryData = await DashboardService.getSummary();
-      setSummary(summaryData);
 
-      if (summaryData.subscriptionStatus === 'EXPIRED') {
-        setSubscriptionExpiredError(
-          'Your salon subscription has expired. Please renew to access all features.'
-        );
+    let summaryData: DashboardSummary | null = null;
+    if (canViewDashboard) {
+      try {
+        summaryData = await DashboardService.getSummary();
+        setSummary(summaryData);
+
+        if (summaryData.subscriptionStatus === 'EXPIRED') {
+          setSubscriptionExpiredError(
+            'Your salon subscription has expired. Please renew to access all features.'
+          );
+        }
+      } catch (sumErr: any) {
+        if (sumErr?.errorCode === 'SUBSCRIPTION_EXPIRED') {
+          setSubscriptionExpiredError(
+            sumErr.message || 'Subscription expired. Please contact support.'
+          );
+        } else {
+          console.warn('[Dashboard] Summary fetch failed:', sumErr?.message);
+        }
       }
+    }
 
+    if (canViewSubscription) {
       try {
         const subData = await DashboardService.getSubscriptionStatus();
         if (subData) {
@@ -77,7 +99,9 @@ export default function DashboardScreen() {
           );
         }
       }
+    }
 
+    if (canViewAttendance) {
       try {
         const attendanceData = await AttendanceService.getTodayStatus();
         setAttendance(attendanceData.attendance);
@@ -90,21 +114,11 @@ export default function DashboardScreen() {
       } catch (attErr: any) {
         console.warn('[Dashboard] Attendance fetch failed:', attErr.message);
       }
-    } catch (err: any) {
-      if (err?.errorCode === 'SUBSCRIPTION_EXPIRED' || err?.statusCode === 403) {
-        setSubscriptionExpiredError(
-          err.message || 'Subscription expired. Please contact support.'
-        );
-      } else {
-        setDashboardError(
-          err?.message || 'Unable to load dashboard data. Please pull to refresh.'
-        );
-      }
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
     }
-  }, []);
+
+    setIsLoading(false);
+    setIsRefreshing(false);
+  }, [canViewDashboard, canViewSubscription, canViewAttendance]);
 
   useEffect(() => {
     fetchDashboardData();
@@ -277,251 +291,280 @@ export default function DashboardScreen() {
         ) : null}
 
         {/* Section A: Today's Appointments Count Card */}
-        <TouchableOpacity
-          style={styles.card}
-          onPress={() => router.push('/(app)/appointments')}
-          activeOpacity={0.8}
-        >
-          <View style={styles.cardHeaderRow}>
-            <View style={styles.cardTitleGroup}>
-              <View style={[styles.iconCircle, { backgroundColor: '#E0F2FE' }]}>
-                <Ionicons name="calendar" size={22} color="#0284C7" />
+        {canViewAppointments && (
+          <TouchableOpacity
+            style={styles.card}
+            onPress={() => router.push('/(app)/appointments')}
+            activeOpacity={0.8}
+          >
+            <View style={styles.cardHeaderRow}>
+              <View style={styles.cardTitleGroup}>
+                <View style={[styles.iconCircle, { backgroundColor: '#E0F2FE' }]}>
+                  <Ionicons name="calendar" size={22} color="#0284C7" />
+                </View>
+                <Text style={styles.cardHeading}>Today's Appointments</Text>
               </View>
-              <Text style={styles.cardHeading}>Today's Appointments</Text>
+              <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
             </View>
-            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-          </View>
 
-          <View style={styles.countRow}>
-            <Text style={styles.countNumber}>
-              {summary ? summary.todayAppointments : 0}
-            </Text>
-            <Text style={styles.countSubtitle}>Tap to view schedule & details</Text>
-          </View>
-        </TouchableOpacity>
+            <View style={styles.countRow}>
+              <Text style={styles.countNumber}>
+                {summary ? summary.todayAppointments : 0}
+              </Text>
+              <Text style={styles.countSubtitle}>Tap to view schedule & details</Text>
+            </View>
+          </TouchableOpacity>
+        )}
 
         {/* Section B: Subscription Status Card */}
-        <View style={styles.card}>
-          <View style={styles.cardHeaderRow}>
-            <View style={styles.cardTitleGroup}>
+        {canViewSubscription && (
+          <View style={styles.card}>
+            <View style={styles.cardHeaderRow}>
+              <View style={styles.cardTitleGroup}>
+                <View
+                  style={[
+                    styles.iconCircle,
+                    { backgroundColor: isSubscriptionActive ? '#DCFCE7' : '#FEE2E2' },
+                  ]}
+                >
+                  <Ionicons
+                    name={isSubscriptionActive ? 'checkmark-circle' : 'alert-circle'}
+                    size={22}
+                    color={isSubscriptionActive ? '#15803D' : '#B91C1C'}
+                  />
+                </View>
+                <Text style={styles.cardHeading}>Subscription Status</Text>
+              </View>
+
               <View
                 style={[
-                  styles.iconCircle,
+                  styles.statusBadge,
                   { backgroundColor: isSubscriptionActive ? '#DCFCE7' : '#FEE2E2' },
                 ]}
               >
-                <Ionicons
-                  name={isSubscriptionActive ? 'checkmark-circle' : 'alert-circle'}
-                  size={22}
-                  color={isSubscriptionActive ? '#15803D' : '#B91C1C'}
-                />
-              </View>
-              <Text style={styles.cardHeading}>Subscription Status</Text>
-            </View>
-
-            <View
-              style={[
-                styles.statusBadge,
-                { backgroundColor: isSubscriptionActive ? '#DCFCE7' : '#FEE2E2' },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.statusBadgeText,
-                  { color: isSubscriptionActive ? '#15803D' : '#B91C1C' },
-                ]}
-              >
-                {isSubscriptionActive ? 'ACTIVE' : 'EXPIRED'}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.subscriptionDetails}>
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Plan Name:</Text>
-              <Text style={styles.detailValue}>
-                {subscription?.plan?.name || 'Standard'}
-              </Text>
-            </View>
-
-            {subscription?.endDate && (
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Expires On:</Text>
-                <Text style={styles.detailValue}>
-                  {DateTime.formatDate(subscription.endDate)}
-                </Text>
-              </View>
-            )}
-
-            {subscription?.daysRemaining !== undefined && (
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Days Remaining:</Text>
                 <Text
                   style={[
-                    styles.detailValue,
-                    {
-                      color:
-                        subscription.daysRemaining <= AppConfig.SUBSCRIPTION.EXPIRING_SOON_DAYS
-                          ? '#B91C1C'
-                          : '#111827',
-                      fontWeight: '600',
-                    },
+                    styles.statusBadgeText,
+                    { color: isSubscriptionActive ? '#15803D' : '#B91C1C' },
                   ]}
                 >
-                  {subscription.daysRemaining} days
+                  {isSubscriptionActive ? 'ACTIVE' : 'EXPIRED'}
                 </Text>
               </View>
-            )}
+            </View>
+
+            <View style={styles.subscriptionDetails}>
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Plan Name:</Text>
+                <Text style={styles.detailValue}>
+                  {subscription?.plan?.name || 'Standard'}
+                </Text>
+              </View>
+
+              {subscription?.endDate && (
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Expires On:</Text>
+                  <Text style={styles.detailValue}>
+                    {DateTime.formatDate(subscription.endDate)}
+                  </Text>
+                </View>
+              )}
+
+              {subscription?.daysRemaining !== undefined && (
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Days Remaining:</Text>
+                  <Text
+                    style={[
+                      styles.detailValue,
+                      {
+                        color:
+                          subscription.daysRemaining <= AppConfig.SUBSCRIPTION.EXPIRING_SOON_DAYS
+                            ? '#B91C1C'
+                            : '#111827',
+                        fontWeight: '600',
+                      },
+                    ]}
+                  >
+                    {subscription.daysRemaining} days
+                  </Text>
+                </View>
+              )}
+            </View>
           </View>
-        </View>
+        )}
 
         {/* Section C & D: Attendance Status & GPS Check-In Card */}
-        <View style={styles.card}>
-          <View style={styles.cardHeaderRow}>
-            <View style={styles.cardTitleGroup}>
+        {canViewAttendance && (
+          <View style={styles.card}>
+            <View style={styles.cardHeaderRow}>
+              <View style={styles.cardTitleGroup}>
+                <View
+                  style={[
+                    styles.iconCircle,
+                    { backgroundColor: hasCheckedIn ? '#DCFCE7' : '#FEF3C7' },
+                  ]}
+                >
+                  <Ionicons
+                    name={hasCheckedIn ? 'shield-checkmark' : 'location'}
+                    size={22}
+                    color={hasCheckedIn ? '#15803D' : '#D97706'}
+                  />
+                </View>
+                <Text style={styles.cardHeading}>Attendance Check-In</Text>
+              </View>
+
               <View
                 style={[
-                  styles.iconCircle,
+                  styles.statusBadge,
                   { backgroundColor: hasCheckedIn ? '#DCFCE7' : '#FEF3C7' },
                 ]}
               >
-                <Ionicons
-                  name={hasCheckedIn ? 'shield-checkmark' : 'location'}
-                  size={22}
-                  color={hasCheckedIn ? '#15803D' : '#D97706'}
-                />
+                <Text
+                  style={[
+                    styles.statusBadgeText,
+                    { color: hasCheckedIn ? '#15803D' : '#B45309' },
+                  ]}
+                >
+                  {hasCheckedIn ? 'Checked In' : 'Not Checked In'}
+                </Text>
               </View>
-              <Text style={styles.cardHeading}>Attendance Check-In</Text>
             </View>
 
-            <View
-              style={[
-                styles.statusBadge,
-                { backgroundColor: hasCheckedIn ? '#DCFCE7' : '#FEF3C7' },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.statusBadgeText,
-                  { color: hasCheckedIn ? '#15803D' : '#B45309' },
-                ]}
-              >
-                {hasCheckedIn ? 'Checked In' : 'Not Checked In'}
-              </Text>
-            </View>
-          </View>
-
-          {/* Salon Working Hours Section */}
-          <View style={styles.workingHoursBox}>
-            <View style={styles.workingHoursHeader}>
-              <Ionicons name="time-outline" size={15} color="#0284C7" />
-              <Text style={styles.workingHoursTitle}>Salon Operating Hours</Text>
-            </View>
-            <View style={styles.workingHoursRow}>
-              <View style={styles.workingHoursItem}>
-                <Text style={styles.workingHoursLabel}>Opening Time</Text>
-                <Text style={styles.workingHoursValue}>{salonOpeningTime} ({rawOpening})</Text>
+            {/* Salon Working Hours Section */}
+            <View style={styles.workingHoursBox}>
+              <View style={styles.workingHoursHeader}>
+                <Ionicons name="time-outline" size={15} color="#0284C7" />
+                <Text style={styles.workingHoursTitle}>Salon Operating Hours</Text>
               </View>
-              <View style={styles.workingHoursDivider} />
-              <View style={styles.workingHoursItem}>
-                <Text style={styles.workingHoursLabel}>Closing Time</Text>
-                <Text style={styles.workingHoursValue}>{salonClosingTime} ({rawClosing})</Text>
-              </View>
-            </View>
-          </View>
-          {/* Attendance Status Info */}
-          {hasCheckedIn && (
-            <View style={[styles.attendanceInfoBox, styles.infoBoxCheckedIn]}>
-              <View style={styles.checkedInDetails}>
-                <Ionicons name="checkmark-circle" size={20} color="#15803D" />
-                <View style={styles.statusTextGroup}>
-                  <Text style={styles.checkedInStatusTitle}>Attendance Status: Checked In</Text>
-                  <Text style={styles.checkedInText}>
-                    Checked in today at {DateTime.formatTime(attendance?.checkInTime)}
-                  </Text>
-                  {attendance?.distanceFromSalon !== undefined && (
-                    <View style={styles.recordedDistanceBadge}>
-                      <Ionicons name="location-outline" size={14} color="#059669" />
-                      <Text style={styles.recordedDistanceText}>
-                        Verified distance: {DistanceUtils.formatDistance(attendance.distanceFromSalon)} from salon
-                      </Text>
-                    </View>
-                  )}
+              <View style={styles.workingHoursRow}>
+                <View style={styles.workingHoursItem}>
+                  <Text style={styles.workingHoursLabel}>Opening Time</Text>
+                  <Text style={styles.workingHoursValue}>{salonOpeningTime} ({rawOpening})</Text>
+                </View>
+                <View style={styles.workingHoursDivider} />
+                <View style={styles.workingHoursItem}>
+                  <Text style={styles.workingHoursLabel}>Closing Time</Text>
+                  <Text style={styles.workingHoursValue}>{salonClosingTime} ({rawClosing})</Text>
                 </View>
               </View>
             </View>
-          )}
 
-          {/* Out of Range Detailed Error Breakdown */}
-          {outOfRangeDetails && (
-            <View style={styles.outOfRangeCard}>
-              <View style={styles.outOfRangeHeader}>
-                <Ionicons name="warning" size={18} color="#DC2626" />
-                <Text style={styles.outOfRangeTitle}>Outside Permitted Salon Radius</Text>
-              </View>
-              <View style={styles.outOfRangeRow}>
-                <Text style={styles.outOfRangeLabel}>Distance to Salon:</Text>
-                <Text style={styles.outOfRangeValue}>{outOfRangeDetails.formattedDistance}</Text>
-              </View>
-              <View style={styles.outOfRangeRow}>
-                <Text style={styles.outOfRangeLabel}>Permitted Radius:</Text>
-                <Text style={styles.outOfRangeValue}>{outOfRangeDetails.formattedAllowedRadius}</Text>
-              </View>
-              <View style={styles.outOfRangeRow}>
-                <Text style={styles.outOfRangeLabel}>Exceeds Boundary By:</Text>
-                <Text style={styles.outOfRangeExceededValue}>+{outOfRangeDetails.formattedExceededBy}</Text>
-              </View>
-              <Text style={{ fontSize: 11, color: '#6B7280', marginTop: 6, fontStyle: 'italic' }}>
-                Please move closer to the salon location to complete your attendance check-in.
-              </Text>
-            </View>
-          )}
-
-          {/* Generic Check-in Error Alert */}
-          {checkInError && !outOfRangeDetails ? (
-            <View style={styles.checkInErrorBanner}>
-              <Ionicons name="alert-circle" size={18} color="#DC2626" style={styles.checkInErrorIcon} />
-              <Text style={styles.checkInErrorText}>{checkInError}</Text>
-            </View>
-          ) : null}
-
-          {/* Check-in Success Banner */}
-          {checkInSuccess && !checkInError ? (
-            <View style={styles.checkInSuccessBanner}>
-              <Ionicons name="checkmark-circle" size={18} color="#15803D" style={styles.checkInErrorIcon} />
-              <Text style={styles.checkInSuccessText}>{checkInSuccess}</Text>
-            </View>
-          ) : null}
-
-          {/* Check-In Option / Button */}
-          <TouchableOpacity
-            style={[
-              styles.checkInButton,
-              hasCheckedIn && styles.checkInButtonDisabled,
-              isCheckingIn && styles.checkInButtonLoading,
-            ]}
-            onPress={handleCheckIn}
-            disabled={hasCheckedIn || isCheckingIn}
-            accessibilityLabel={hasCheckedIn ? 'Checked In' : 'Check In Button'}
-          >
-            {isCheckingIn ? (
-              <View style={styles.buttonInnerRow}>
-                <ActivityIndicator color="#FFFFFF" size="small" />
-                <Text style={styles.checkInButtonText}>Verifying Location & Checking In...</Text>
-              </View>
-            ) : hasCheckedIn ? (
-              <View style={styles.buttonInnerRow}>
-                <Ionicons name="checkmark-circle" size={18} color="#9CA3AF" />
-                <Text style={styles.checkInButtonDisabledText}>Checked In</Text>
-              </View>
-            ) : (
-              <View style={styles.buttonInnerRow}>
-                <Ionicons name="navigate" size={18} color="#FFFFFF" />
-                <Text style={styles.checkInButtonText}>Check In Now</Text>
+            {/* Attendance Status Info */}
+            {hasCheckedIn && (
+              <View style={[styles.attendanceInfoBox, styles.infoBoxCheckedIn]}>
+                <View style={styles.checkedInDetails}>
+                  <Ionicons name="checkmark-circle" size={20} color="#15803D" />
+                  <View style={styles.statusTextGroup}>
+                    <Text style={styles.checkedInStatusTitle}>Attendance Status: Checked In</Text>
+                    <Text style={styles.checkedInText}>
+                      Checked in today at {DateTime.formatTime(attendance?.checkInTime)}
+                    </Text>
+                    {attendance?.distanceFromSalon !== undefined && (
+                      <View style={styles.recordedDistanceBadge}>
+                        <Ionicons name="location-outline" size={14} color="#059669" />
+                        <Text style={styles.recordedDistanceText}>
+                          Verified distance: {DistanceUtils.formatDistance(attendance.distanceFromSalon)} from salon
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
               </View>
             )}
-          </TouchableOpacity>
-        </View>
+
+            {/* Out of Range Detailed Error Breakdown */}
+            {outOfRangeDetails && (
+              <View style={styles.outOfRangeCard}>
+                <View style={styles.outOfRangeHeader}>
+                  <Ionicons name="warning" size={18} color="#DC2626" />
+                  <Text style={styles.outOfRangeTitle}>Outside Permitted Salon Radius</Text>
+                </View>
+                <View style={styles.outOfRangeRow}>
+                  <Text style={styles.outOfRangeLabel}>Distance to Salon:</Text>
+                  <Text style={styles.outOfRangeValue}>{outOfRangeDetails.formattedDistance}</Text>
+                </View>
+                <View style={styles.outOfRangeRow}>
+                  <Text style={styles.outOfRangeLabel}>Permitted Radius:</Text>
+                  <Text style={styles.outOfRangeValue}>{outOfRangeDetails.formattedAllowedRadius}</Text>
+                </View>
+                <View style={styles.outOfRangeRow}>
+                  <Text style={styles.outOfRangeLabel}>Exceeds Boundary By:</Text>
+                  <Text style={styles.outOfRangeExceededValue}>+{outOfRangeDetails.formattedExceededBy}</Text>
+                </View>
+                <Text style={{ fontSize: 11, color: '#6B7280', marginTop: 6, fontStyle: 'italic' }}>
+                  Please move closer to the salon location to complete your attendance check-in.
+                </Text>
+              </View>
+            )}
+
+            {/* Generic Check-in Error Alert */}
+            {checkInError && !outOfRangeDetails ? (
+              <View style={styles.checkInErrorBanner}>
+                <Ionicons name="alert-circle" size={18} color="#DC2626" style={styles.checkInErrorIcon} />
+                <Text style={styles.checkInErrorText}>{checkInError}</Text>
+              </View>
+            ) : null}
+
+            {/* Check-in Success Banner */}
+            {checkInSuccess && !checkInError ? (
+              <View style={styles.checkInSuccessBanner}>
+                <Ionicons name="checkmark-circle" size={18} color="#15803D" style={styles.checkInErrorIcon} />
+                <Text style={styles.checkInSuccessText}>{checkInSuccess}</Text>
+              </View>
+            ) : null}
+
+            {/* Check-In Option / Button or View-Only Notice */}
+            {canCheckInAttendance ? (
+              <TouchableOpacity
+                style={[
+                  styles.checkInButton,
+                  hasCheckedIn && styles.checkInButtonDisabled,
+                  isCheckingIn && styles.checkInButtonLoading,
+                ]}
+                onPress={handleCheckIn}
+                disabled={hasCheckedIn || isCheckingIn}
+                accessibilityLabel={hasCheckedIn ? 'Checked In' : 'Check In Button'}
+              >
+                {isCheckingIn ? (
+                  <View style={styles.buttonInnerRow}>
+                    <ActivityIndicator color="#FFFFFF" size="small" />
+                    <Text style={styles.checkInButtonText}>Verifying Location & Checking In...</Text>
+                  </View>
+                ) : hasCheckedIn ? (
+                  <View style={styles.buttonInnerRow}>
+                    <Ionicons name="checkmark-circle" size={18} color="#9CA3AF" />
+                    <Text style={styles.checkInButtonDisabledText}>Checked In</Text>
+                  </View>
+                ) : (
+                  <View style={styles.buttonInnerRow}>
+                    <Ionicons name="navigate" size={18} color="#FFFFFF" />
+                    <Text style={styles.checkInButtonText}>Check In Now</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.viewOnlyAttendanceBox}>
+                <Ionicons name="information-circle-outline" size={18} color="#6B7280" />
+                <Text style={styles.viewOnlyAttendanceText}>
+                  Attendance check-in is not permitted for your assigned role (View Only).
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Informational Card when user has neither Appointments nor Attendance operational permissions */}
+        {!canViewAppointments && !canViewAttendance && (
+          <View style={styles.card}>
+            <View style={styles.adminScopeBox}>
+              <Ionicons name="shield-checkmark-outline" size={40} color="#0284C7" />
+              <Text style={styles.adminScopeTitle}>Administrative Scope</Text>
+              <Text style={styles.adminScopeText}>
+                Your account has administrative permissions. Mobile attendance check-in and salon appointments are scoped strictly to salon operational staff. Full administration is accessible on the Web Portal.
+              </Text>
+            </View>
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -956,5 +999,38 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#059669',
     fontWeight: '600',
+  },
+  viewOnlyAttendanceBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+    padding: 12,
+    borderRadius: 10,
+    marginTop: 12,
+    gap: 8,
+  },
+  viewOnlyAttendanceText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#4B5563',
+    lineHeight: 18,
+  },
+  adminScopeBox: {
+    alignItems: 'center',
+    paddingVertical: 24,
+    paddingHorizontal: 16,
+  },
+  adminScopeTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#111827',
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  adminScopeText: {
+    fontSize: 13.5,
+    color: '#6B7280',
+    textAlign: 'center',
+    lineHeight: 20,
   },
 });

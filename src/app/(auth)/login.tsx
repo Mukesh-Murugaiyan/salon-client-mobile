@@ -173,34 +173,8 @@ export default function LoginScreen() {
                 <Text style={styles.loginButtonText}>Sign In</Text>
               )}
             </TouchableOpacity>
-
-            {/* Fast Test Account Presets */}
-            <View style={styles.presetsSection}>
-              <Text style={styles.presetsTitle}>Quick Fill Test Credentials:</Text>
-              <View style={styles.presetButtonsRow}>
-                {AppConfig.TEST_ACCOUNTS.map((account) => (
-                  <TouchableOpacity
-                    key={account.email}
-                    style={styles.presetChip}
-                    onPress={() => fillCredentials(account.email, account.password)}
-                  >
-                    <Text style={styles.presetChipText}>{account.label}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
           </View>
 
-          {/* Server Config Toggle */}
-          <TouchableOpacity
-            style={styles.configToggle}
-            onPress={() => setShowUrlConfig(!showUrlConfig)}
-          >
-            <Ionicons name="server-outline" size={16} color="#6B7280" />
-            <Text style={styles.configToggleText}>
-              Backend: {apiUrl}
-            </Text>
-          </TouchableOpacity>
 
           {showUrlConfig && (
             <View style={styles.configCard}>
